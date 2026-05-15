@@ -1,0 +1,26 @@
+# Navodila — IntelliJ brez Gradla
+
+1. Zapri trenutni projekt v IntelliJ:  `File → Close Project`
+2. Naredi nov projekt:
+   - `File → New → Project`
+   - Levo zavihek: **Kotlin**
+   - **Build system: IntelliJ**  ← ZELO POMEMBNO, ne Gradle, ne Maven
+   - **JDK: 17** (ali višje; če nimaš, klikni "Download JDK" v istem oknu)
+   - Ime projekta: KotlinNaloge
+   - Lokacija: kjerkoli (npr. `E:\School\Year 3\Odprta koda\KotlinNaloge`)
+   - Klikni **Create**
+3. Ko se odpre prazen projekt, v drevesu zagledaš:
+   ```
+   KotlinNaloge\
+   └── src\
+       └── Main.kt  (privzeti primer)
+   ```
+4. **Razpakiraj ta zip kamorkoli** (npr. namizje). Dobiš mapo `src` s sedmimi podmapami.
+5. **Iz raziskovalca prenesi vse mape v IntelliJ `src` mapo** — drag and drop deluje:
+   - Označi `poglavje1, poglavje2, poglavje3, poglavje4, poglavje5, poglavje6, projekti`
+   - Povleci v IntelliJ-jevo drevesno strukturo, na mapo `src`
+   - IntelliJ vpraša "Copy specified files" → Refactor → OK
+6. Lahko zbrišeš `Main.kt`, ne potrebuješ ga.
+7. Odpri `poglavje1\Spremenljivke.kt`, klikni zeleno puščico ob `fun main()`.
+
+Gotovo. Brez Gradla, brez napak.
