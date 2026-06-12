@@ -1,0 +1,11 @@
+Set the entire quadrant (start, end, top, and bottom) to a 16dp padding.
+Center align all of the content vertically and horizontally in each quadrant.
+Format the first Text composable in bold and set it to a 16dp padding bottom.
+Set the second Text composable to a Default font size.
+Resources
+These colors:
+
+Color(0xFFEADDFF)
+Color(0xFFD0BCFF)
+Color(0xFFB69DF8)
+Color(0xFFF6EDFF)
