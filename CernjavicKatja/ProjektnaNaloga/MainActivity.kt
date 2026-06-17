@@ -1,0 +1,623 @@
+package com.example.mojirecepti
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import api.RetrofitInstance
+import coil.compose.rememberAsyncImagePainter
+import model.Recept
+
+// Barve aplikacije
+val Ozadje = Color(0xE2F3EEC6)
+val GumbBarva = Color(0xFF78B47B)
+val KarticaBarva = Color(0xFFC8E6C9)
+val NaslovBarva = Color(0xFF78B47B)
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+
+        setContent {
+            MaterialTheme {
+                AplikacijaRecepti()
+            }
+        }
+    }
+}
+
+// Skupna funkcija za gumbe
+@Composable
+fun MojGumb(
+    besedilo: String,
+    klik: () -> Unit,
+    barva: Color = GumbBarva
+) {
+    Button(
+        onClick = klik,
+        colors = ButtonDefaults.buttonColors(containerColor = barva),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(besedilo)
+    }
+}
+
+// Skupna funkcija za naslove
+@Composable
+fun MojNaslov(
+    besedilo: String,
+    velikost: Int = 28
+) {
+    Text(
+        text = besedilo,
+        color = NaslovBarva,
+        fontSize = velikost.sp,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+// Skupna funkcija za vnosna polja
+@Composable
+fun Vnos(
+    vrednost: String,
+    sprememba: (String) -> Unit,
+    napis: String
+) {
+    OutlinedTextField(
+        value = vrednost,
+        onValueChange = sprememba,
+        label = { Text(napis) },
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+// Glavna funkcija aplikacije
+@Composable
+fun AplikacijaRecepti() {
+
+    val context = LocalContext.current
+
+    // Spremenljivka določa trenutno prikazan zaslon
+    var trenutniZaslon by remember { mutableStateOf("domov") }
+
+    // Tukaj se shrani recept, ki ga uporabnik izbere
+    var izbranRecept by remember { mutableStateOf<Recept?>(null) }
+
+    // Ob zagonu aplikacije se naložijo shranjeni recepti
+    val recepti = remember {
+        val nalozeniRecepti = naloziRecepte(context)
+        mutableStateListOf(*nalozeniRecepti.toTypedArray())
+    }
+
+    when (trenutniZaslon) {
+        "domov" -> DomovScreen(
+            naRecepte = { trenutniZaslon = "seznam" },
+            naDodaj = { trenutniZaslon = "dodaj" },
+            naApi = { trenutniZaslon = "api" }
+        )
+
+        "seznam" -> SeznamScreen(
+            recepti = recepti,
+            nazaj = { trenutniZaslon = "domov" },
+            izberiRecept = {
+                izbranRecept = it
+                trenutniZaslon = "podrobnosti"
+            }
+        )
+
+        "podrobnosti" -> PodrobnostiScreen(
+            recept = izbranRecept,
+            nazaj = { trenutniZaslon = "seznam" },
+            izbrisi = {
+                if (izbranRecept != null) {
+                    recepti.remove(izbranRecept)
+                    shraniRecepte(context, recepti)
+                    izbranRecept = null
+                    trenutniZaslon = "seznam"
+                }
+            }
+        )
+
+        "dodaj" -> DodajScreen(
+            nazaj = { trenutniZaslon = "domov" },
+            shrani = {
+                recepti.add(it)
+                shraniRecepte(context, recepti)
+                trenutniZaslon = "seznam"
+            }
+        )
+
+        "api" -> ApiScreen(
+            nazaj = { trenutniZaslon = "domov" }
+        )
+    }
+}
+
+// Začetni zaslon
+@Composable
+fun DomovScreen(
+    naRecepte: () -> Unit,
+    naDodaj: () -> Unit,
+    naApi: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Ozadje)
+            .statusBarsPadding()
+            .padding(20.dp),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(45.dp))
+
+        MojNaslov("Moji recepti", 30)
+
+        Spacer(modifier = Modifier.height(170.dp))
+
+        MojGumb("Seznam receptov", naRecepte)
+
+        Spacer(modifier = Modifier.height(30.dp))
+
+        MojGumb("Dodaj recept", naDodaj)
+
+        Spacer(modifier = Modifier.height(30.dp))
+
+        MojGumb("Naključni recept iz interneta", naApi)
+    }
+}
+
+// Zaslon s seznamom receptov
+@Composable
+fun SeznamScreen(
+    recepti: List<Recept>,
+    nazaj: () -> Unit,
+    izberiRecept: (Recept) -> Unit
+) {
+    var iskanje by remember { mutableStateOf("") }
+
+    // Iskanje receptov po imenu, sestavinah ali kategoriji
+    val filtriraniRecepti = recepti.filter {
+        it.ime.contains(iskanje, ignoreCase = true)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Ozadje)
+            .statusBarsPadding()
+            .padding(16.dp)
+    ) {
+        MojNaslov("Seznam receptov")
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Vnos(
+            vrednost = iskanje,
+            sprememba = { iskanje = it },
+            napis = "Išči recept"
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Prikaz receptov v seznamu
+        LazyColumn(
+            modifier = Modifier.weight(1f)
+        ) {
+            items(filtriraniRecepti) { recept ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = KarticaBarva),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(5.dp)
+                        .clickable {
+                            izberiRecept(recept)
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        if (recept.slikaUri.isNotEmpty()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(Uri.parse(recept.slikaUri)),
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .width(110.dp)
+                                    .height(90.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
+
+                        Column {
+                            Text(
+                                text = recept.ime,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(text = recept.kategorija)
+                        }
+                    }
+                }
+            }
+        }
+
+        MojGumb("Nazaj", nazaj)
+    }
+}
+
+// Zaslon s podrobnostmi izbranega recepta
+@Composable
+fun PodrobnostiScreen(
+    recept: Recept?,
+    nazaj: () -> Unit,
+    izbrisi: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Ozadje)
+            .statusBarsPadding()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        MojNaslov("Podrobnosti recepta")
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        if (recept != null) {
+
+            if (recept.slikaUri.isNotEmpty()) {
+                Image(
+                    painter = rememberAsyncImagePainter(Uri.parse(recept.slikaUri)),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                )
+
+                Spacer(modifier = Modifier.height(15.dp))
+            }
+
+            Text(
+                text = recept.ime,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                color = NaslovBarva
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("Kategorija: ${recept.kategorija}", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("Čas priprave: ${recept.casPriprave}", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("Sestavine:", fontWeight = FontWeight.Bold)
+            Text(recept.sestavine)
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("Postopek:", fontWeight = FontWeight.Bold)
+            Text(recept.postopek)
+        }
+
+        Spacer(modifier = Modifier.height(30.dp))
+
+        MojGumb("Izbriši recept", izbrisi, Color.Red)
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        MojGumb("Nazaj", nazaj)
+    }
+}
+
+// Zaslon za dodajanje novega recepta
+@Composable
+fun DodajScreen(
+    nazaj: () -> Unit,
+    shrani: (Recept) -> Unit
+) {
+    var ime by remember { mutableStateOf("") }
+    var sestavine by remember { mutableStateOf("") }
+    var postopek by remember { mutableStateOf("") }
+    var cas by remember { mutableStateOf("") }
+    var kategorija by remember { mutableStateOf("") }
+    var napaka by remember { mutableStateOf("") }
+    var slikaUri by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+
+    // Izbira slike iz galerije
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+
+            // Dovoljenje, da slika ostane dostopna tudi po ponovnem zagonu
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+
+            slikaUri = uri.toString()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Ozadje)
+            .statusBarsPadding()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        MojNaslov("Dodaj recept")
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Vnos(ime, { ime = it }, "Ime recepta")
+        Vnos(sestavine, { sestavine = it }, "Sestavine")
+        Vnos(postopek, { postopek = it }, "Postopek")
+        Vnos(cas, { cas = it }, "Čas priprave")
+        Vnos(kategorija, { kategorija = it }, "Kategorija")
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        MojGumb(
+            besedilo = "Izberi sliko iz galerije",
+            klik = {
+                launcher.launch(arrayOf("image/*"))
+            }
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (slikaUri.isNotEmpty()) {
+            Image(
+                painter = rememberAsyncImagePainter(Uri.parse(slikaUri)),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (napaka.isNotEmpty()) {
+            Text(
+                text = napaka,
+                color = Color.Red,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        MojGumb(
+            besedilo = "Shrani recept",
+            klik = {
+                // Preverjanje, ali so vsa polja izpolnjena
+                if (
+                    ime.isBlank() ||
+                    sestavine.isBlank() ||
+                    postopek.isBlank() ||
+                    cas.isBlank() ||
+                    kategorija.isBlank()
+                ) {
+                    napaka = "Izpolnite vsa polja!"
+                } else {
+                    val novRecept = Recept(
+                        ime = ime,
+                        sestavine = sestavine,
+                        postopek = postopek,
+                        casPriprave = cas,
+                        kategorija = kategorija,
+                        slikaUri = slikaUri
+                    )
+
+                    napaka = ""
+                    shrani(novRecept)
+                }
+            }
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        MojGumb("Nazaj", nazaj)
+    }
+}
+
+// Zaslon za naključni recept iz API-ja
+@Composable
+fun ApiScreen(
+    nazaj: () -> Unit
+) {
+    var ime by remember { mutableStateOf("") }
+    var kategorija by remember { mutableStateOf("") }
+    var sestavine by remember { mutableStateOf("") }
+    var postopek by remember { mutableStateOf("") }
+    var slika by remember { mutableStateOf("") }
+    var napaka by remember { mutableStateOf("") }
+    var nalagam by remember { mutableStateOf(true) }
+
+    // API se pokliče samodejno, ko se zaslon odpre
+    LaunchedEffect(Unit) {
+        try {
+            val odgovor = RetrofitInstance.api.getRandomMeal()
+            val recept = odgovor.meals.first()
+
+            ime = recept.strMeal
+            kategorija = recept.strCategory
+            postopek = recept.strInstructions
+            slika = recept.strMealThumb
+
+            sestavine = listOf(
+                recept.strIngredient1,
+                recept.strIngredient2,
+                recept.strIngredient3,
+                recept.strIngredient4,
+                recept.strIngredient5
+            )
+                .filter { !it.isNullOrBlank() }
+                .joinToString(", ")
+
+            napaka = ""
+            nalagam = false
+
+        } catch (e: Exception) {
+            napaka = "Napaka pri pridobivanju podatkov."
+            nalagam = false
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Ozadje)
+            .statusBarsPadding()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        MojNaslov("Naključni recept iz interneta")
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        if (nalagam) {
+            Text(
+                text = "Pridobivam recept...",
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (napaka.isNotEmpty()) {
+            Text(
+                text = napaka,
+                color = Color.Red,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (ime.isNotEmpty()) {
+
+            if (slika.isNotEmpty()) {
+                Image(
+                    painter = rememberAsyncImagePainter(slika),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                )
+
+                Spacer(modifier = Modifier.height(15.dp))
+            }
+
+            Text(
+                text = ime,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = NaslovBarva
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text("Kategorija: $kategorija", fontWeight = FontWeight.Bold)
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text("Sestavine:", fontWeight = FontWeight.Bold)
+            Text(text = sestavine)
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text("Postopek:", fontWeight = FontWeight.Bold)
+            Text(text = postopek)
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        MojGumb("Nazaj", nazaj)
+    }
+}
+
+// Shranjevanje vseh receptov v SharedPreferences
+fun shraniRecepte(
+    context: Context,
+    recepti: List<Recept>
+) {
+    val preferences =
+        context.getSharedPreferences("Recepti", Context.MODE_PRIVATE)
+
+    val podatki = recepti.joinToString("\n")
+
+    preferences.edit()
+        .putString("vsiRecepti", podatki)
+        .apply()
+}
+
+// Nalaganje shranjenih receptov iz SharedPreferences
+fun naloziRecepte(
+    context: Context
+): MutableList<Recept> {
+
+    val preferences =
+        context.getSharedPreferences("Recepti", Context.MODE_PRIVATE)
+
+    val podatki =
+        preferences.getString("vsiRecepti", "") ?: ""
+
+    val seznam = mutableListOf<Recept>()
+
+    if (podatki.isNotEmpty()) {
+        val vrstice = podatki.split("\n")
+
+        for (vrstica in vrstice) {
+            val deli = vrstica.split("|")
+
+            if (deli.size == 6) {
+                seznam.add(
+                    Recept(
+                        deli[0],
+                        deli[1],
+                        deli[2],
+                        deli[3],
+                        deli[4],
+                        deli[5]
+                    )
+                )
+            }
+        }
+    }
+
+    return seznam
+}
